@@ -18,15 +18,15 @@ This directory contains regulatory compliance documentation and certifications f
 Files are named using the format: `STUBBORN-[MODEL]-[CERT_TYPE]-[VERSION].pdf`
 
 Where:
-- MODEL: SC (Supercapacitor), HC (Hybrid), MB (Multichem Battery)
+- MODEL: Eternal (Supercapacitor), Balance (Hybrid), Stamina (Multichem Battery)
 - CERT_TYPE: CE, FCC, ROHS, SAFETY, etc.
 - VERSION: Date or revision number
 
 ## Contact Information
 
 For questions about compliance or to request additional certifications, contact:
-- Email: compliance@stubborn-ups.com
-- Phone: +1 (555) 123-4567
+- Email: info@aqex.eu
+- Phone: +36 (70) 60 33342
 
 ## Updates
 

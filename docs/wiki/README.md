@@ -34,17 +34,17 @@ Welcome to the Stubborn UPS HAT knowledge base. This wiki contains detailed info
 
 ## Model-Specific Information
 
-### Stubborn SC (Supercapacitor)
-- [SC Specific Features](./sc-features.md)
-- [SC Performance Data](./sc-performance.md)
+### Stubborn Eternal (Supercapacitor)
+- [Eternal Specific Features](./eternal-features.md)
+- [Eternal Performance Data](./eternal-performance.md)
 
-### Stubborn HC (Hybrid Capacitor)
-- [HC Specific Features](./hc-features.md)
-- [HC Performance Data](./hc-performance.md)
+### Stubborn Balance (Hybrid Capacitor)
+- [Balance Specific Features](./balance-features.md)
+- [Balance Performance Data](./balance-performance.md)
 
-### Stubborn MB (Multichem Battery)
-- [MB Specific Features](./mb-features.md)
-- [MB Performance Data](./mb-performance.md)
+### Stubborn Stamina (Multichem Battery)
+- [Stamina Specific Features](./stamina-features.md)
+- [Stamina Performance Data](./stamina-performance.md)
 
 ---
 

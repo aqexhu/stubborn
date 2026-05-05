@@ -4,9 +4,9 @@ Detailed technical specifications for each Stubborn model.
 
 ## Available Datasheets
 
-- [Stubborn SC Datasheet](./stubborn-sc-datasheet.md) - Supercapacitor model
-- [Stubborn HC Datasheet](./stubborn-hc-datasheet.md) - Hybrid capacitor model
-- [Stubborn MB Datasheet](./stubborn-mb-datasheet.md) - Multichem battery model
+- [Stubborn Eternal Datasheet](./stubborn-eternal-datasheet.md) - Supercapacitor model
+- [Stubborn Balance Datasheet](./stubborn-balance-datasheet.md) - Hybrid capacitor model
+- [Stubborn Stamina Datasheet](./stubborn-stamina-datasheet.md) - Multichem battery model
 
 ## Revision History
 

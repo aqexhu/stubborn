@@ -12,9 +12,9 @@ This directory contains all documentation for the Stubborn Raspberry Pi UPS HAT 
 ## Document Organization
 
 All documents are organized by product model where applicable:
-- **SC**: Supercapacitor model
-- **HC**: Hybrid capacitor model
-- **MB**: Multichem battery model
+- **Eternal**: Supercapacitor model
+- **Balance**: Hybrid capacitor model
+- **Stamina**: Multichem battery model
 
 ## Contributing to Documentation
 

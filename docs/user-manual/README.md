@@ -4,9 +4,9 @@ Welcome to the Stubborn UPS HAT user manual. This guide will help you install, c
 
 ## Available Manuals
 
-- [Stubborn SC User Manual](./stubborn-sc-manual.md) - Supercapacitor model
-- [Stubborn HC User Manual](./stubborn-hc-manual.md) - Hybrid capacitor model
-- [Stubborn MB User Manual](./stubborn-mb-manual.md) - Multichem battery model
+- [Stubborn Eternal User Manual](./stubborn-eternal-manual.md) - Supercapacitor model
+- [Stubborn Balance User Manual](./stubborn-balance-manual.md) - Hybrid capacitor model
+- [Stubborn Stamina User Manual](./stubborn-stamina-manual.md) - Multichem battery model
 
 ## Quick Installation
 
