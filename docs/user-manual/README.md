@@ -2,11 +2,30 @@
 
 Welcome to the Stubborn UPS HAT user manual. This guide will help you install, configure, and use your Stubborn uninterruptible power supply.
 
-## Available Manuals
+## Stubborn Eternal (Supercapacitor)
 
-- [Stubborn Eternal User Manual](./stubborn-eternal-manual.md) - Supercapacitor model
-- [Stubborn Balance User Manual](./stubborn-balance-manual.md) - Hybrid capacitor model
-- [Stubborn Stamina User Manual](./stubborn-stamina-manual.md) - Multichem battery model
+- **Markdown**: [qUPS-P-SC v1.3 User Manual](./qUPS-P-SC_v1.3-UserManual_v1.2.pdf) (PDF)
+- **Hungarian**: [qUPS-P-SC v1.3 Használati Útmutató](./qUPS-P-SC_v1.3-HasználatiÚtmutató_v1.1.pdf) (PDF)
+
+## Stubborn Balance (Hybrid Capacitor)
+
+- **Version**: Balance Zero v1.0
+- **English**: [Stubborn Balance Zero User Manual](./Stubborn-Balance-Zero_v1.0-UserManual_v1.0.pdf) (PDF)
+- **Hungarian**: [Stubborn Balance Zero Használati Útmutató](./Stubborn-Balance-Zero-v1.0-HasználatiÚtmutató_v1.0.pdf) (PDF)
+
+## Stubborn Stamina
+
+### Stamina LF (LiFePO₄ Battery)
+
+- **Version**: Stamina LF v1.0
+- **English**: [Stubborn Stamina LF User Manual](./Stubborn-Stamina-LF_v1.0-UserManual_v1.0.pdf) (PDF)
+- **Hungarian**: [Stubborn Stamina LF Használati Útmutató](./Stubborn-Stamina-LF-v1.0-HasználatiÚtmutató_v1.0.pdf) (PDF)
+
+### Stamina Max (Multichem Battery)
+
+- **Version**: qUPS-P-BC v2.0
+- **Markdown**: [Stubborn Stamina Max User Manual](./stubborn-stamina-max-manual.md)
+- **PDF**: [qUPS-P-BC v2.0 User Manual](./qUPS-P-BC_v2.0-UserManual_v1.1.pdf)
 
 ## Quick Installation
 
