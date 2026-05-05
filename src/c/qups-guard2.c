@@ -182,7 +182,7 @@ int g_gpioinit()
     if (info)
     {
         syslog(LOG_INFO, "Chip name: %s - label: %s - %d lines",
-               gpiod_chip_name(chip), gpiod_chip_label(chip), gpiod_chip_num_lines(chip));
+               gpiod_chip_info_get_name(info), gpiod_chip_info_get_label(info), gpiod_chip_info_get_num_lines(info));
         gpiod_chip_info_free(info);
     }
 
@@ -212,6 +212,11 @@ int g_gpioinit()
     gpiod_line_settings_free(settings_in);
     gpiod_line_config_free(linecfg_in);
     gpiod_request_config_free(reqcfg_in);
+
+    // Print initial status
+    printf("Initial power status: %s\n", gpiod_line_request_get_value(in_request, DIP_sw.pfo_n) ? "OK" : "NOK");
+    printf("Initial energy level: %s\n", gpiod_line_request_get_value(in_request, DIP_sw.lim_n) ? "HIGH" : "LOW");
+
 
     return 0;
 }
