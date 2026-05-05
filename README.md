@@ -1,3 +1,5 @@
+### AQEX Stubborn UPS Family @ Raspberry Pi and Pi Zero
+![AQEX Stubborn Stamina Max](images/AQEX-qUPS-STUBBORN-STAMINA-MAX.png)
 # Stubborn - Raspberry Pi UPS HAT Family
 
 ![License](https://img.shields.io/github/license/aqexhu/stubborn) ![Last Commit](https://img.shields.io/github/last-commit/aqexhu/stubborn) ![OS](https://img.shields.io/badge/OS-Linux-blue)
