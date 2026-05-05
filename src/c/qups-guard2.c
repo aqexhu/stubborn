@@ -311,6 +311,18 @@ int main(int argc, char **argv)
 
         syslog(LOG_INFO, "Initial state - Power %s, Limit %s", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
         printf("Initial state - Power %s, Limit %s\n", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
+
+        if (!shutdown_delay_set)
+        {
+            shutdown_delay = SHUTDOWN_DELAY;
+        }
+        syslog(LOG_INFO, "Shutdown delay %d", shutdown_delay);
+
+        if (!g_gpio_events())
+        {
+            pthread_join(g_thread, NULL);
+            g_gpiorelease();
+        }
     }
     else
     {
@@ -321,20 +333,6 @@ int main(int argc, char **argv)
         printf("Example: --dip 10  means DIP switch GT1=ON GT2=OFF\n");
         printf("         --dip 100 means DIP 1=ON 2=OFF 3=OFF\n");
         printf("Shutdown delay can be set with --shutdown-delay <seconds> (default %d)\n", SHUTDOWN_DELAY);
-    }
-    if (!shutdown_delay_set)
-    {
-        shutdown_delay = SHUTDOWN_DELAY;
-    }
-    syslog(LOG_INFO, "Shutdown delay %d", shutdown_delay);
-
-    if (dip_matched)
-    {
-        if (!g_gpio_events())
-        {
-            pthread_join(g_thread, NULL);
-            g_gpiorelease();
-        }
     }
 
     closelog();
