@@ -1,6 +1,16 @@
 # Stubborn - Raspberry Pi UPS HAT Family
 
+![License](https://img.shields.io/github/license/aqexhu/stubborn) ![Last Commit](https://img.shields.io/github/last-commit/aqexhu/stubborn) ![OS](https://img.shields.io/badge/OS-Linux-blue)
+
 Welcome to the official repository for the **Stubborn** Raspberry Pi UPS HAT family. This product line provides reliable uninterruptible power supply solutions for Raspberry Pi devices, featuring three main product lines: Eternal, Balance, and Stamina.
+
+## Table of Contents
+- [Product Overview](#product-overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Product Overview
 
@@ -13,13 +23,15 @@ The Stubborn family offers different energy storage solutions:
   - **NA**: Sodium-ion battery for cost-effective long-term storage
   - **MAX**: Multichem battery for maximum capacity and performance
 
-## Repository Structure
+## Features
 
-- [`docs/`](./docs/) - Documentation, compliance certificates, user manuals, and technical datasheets
-- [`code/`](./code/) - Driver implementations in C and Python
-- [`docs/wiki/`](./docs/wiki/) - Product wiki and knowledge base
+- ✅ Instant backup with supercapacitors (Eternal)
+- ✅ Balanced performance and capacity (Balance)  
+- ✅ Multiple battery chemistries (Stamina)
+- ✅ GPIO-based monitoring and shutdown
+- ✅ Event-driven C driver and polling Python driver
 
-## Quick Start
+## Installation
 
 1. Choose your Stubborn model based on your power requirements
 2. Review the [user manual](./docs/user-manual/) for installation instructions
@@ -39,6 +51,16 @@ See the [`code/`](./code/) directory for C and Python drivers based on qups-guar
 - C: qups-guard2 (event-driven GPIO monitoring)
 - Python: qups-guard.py (polling GPIO monitoring)
 
+## Quick Start
+
+```bash
+# Clone the repo
+git clone https://github.com/aqexhu/stubborn.git
+
+# Rund the guard software
+stubborn/src/c/qups-guard2 --dip 01
+```
+
 ## Contributing
 
 We welcome contributions to improve the Stubborn ecosystem. Please see our contribution guidelines in the wiki.
@@ -53,3 +75,11 @@ For support, questions, or feedback:
 - Check the [product wiki](./docs/wiki/)
 - Visit our [website](./website/)
 - Contact our support team
+
+## Product Images
+
+### Stubborn Stamina Max
+![Stubborn Stamina Max](images/stubborn_stamina_max_trans_1.png)
+
+### Assembled on Raspberry Pi
+![Assembled](images/qUPS-P-BC-raspberry-pi-ups-hat-assembled_en.png)
