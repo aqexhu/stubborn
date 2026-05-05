@@ -309,8 +309,16 @@ int main(int argc, char **argv)
         lastval_pfo = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.pfo_n);
         lastval_lim = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.lim_n);
 
-        syslog(LOG_INFO, "Initial state - Power %s, Limit %s", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
-        printf("Initial state - Power %s, Limit %s\n", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
+        // set initial state of output line to HIGH (shutdown active on Limit LOW)
+        if (gpiod_line_request_set_value(shd_request, DIP_sw.shd_n, 1) != 0)
+        {
+            syslog(LOG_ERR, "Failed to set initial state of shutdown line");
+            fprintf(stderr, "Failed to set initial state of shutdown line\n");
+            exit(EXIT_FAILURE);
+        }
+
+        syslog(LOG_INFO, "Initial state - Power %s, Limit %s - shutdown active.", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
+        printf("Initial state - Power %s, Limit %s - shutdown active.\n", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
 
         if (!shutdown_delay_set)
         {
