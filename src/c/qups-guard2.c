@@ -181,7 +181,7 @@ int g_gpioinit()
     struct gpiod_chip_info *info = gpiod_chip_get_info(chip);
     if (info)
     {
-        syslog(LOG_INFO, "Chip name: %s - label: %s - %d lines",
+        syslog(LOG_INFO, "Chip name: %s - label: %s - %ld lines",
                gpiod_chip_info_get_name(info), gpiod_chip_info_get_label(info), gpiod_chip_info_get_num_lines(info));
         gpiod_chip_info_free(info);
     }
