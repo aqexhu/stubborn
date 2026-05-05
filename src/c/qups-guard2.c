@@ -289,6 +289,20 @@ int main(int argc, char **argv)
 
     if (dip_matched)
     {
+        if (g_gpioinit() != 0)
+        {
+            syslog(LOG_ERR, "GPIO initialization failed");
+            fprintf(stderr, "GPIO initialization failed\n");
+            exit(EXIT_FAILURE);
+        }
+
+        if (!in_request)
+        {
+            syslog(LOG_ERR, "GPIO input request not available");
+            fprintf(stderr, "GPIO input request not available\n");
+            exit(EXIT_FAILURE);
+        }
+
         syslog(LOG_INFO, "Used pins (BCM) - pfo: %d, lim: %d, shd: %d", DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
         printf("Used pins (BCM) - pfo: %d, lim: %d, shd: %d\n", DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
         // Initial state read
@@ -314,7 +328,7 @@ int main(int argc, char **argv)
     }
     syslog(LOG_INFO, "Shutdown delay %d", shutdown_delay);
 
-    if (!g_gpioinit())
+    if (dip_matched)
     {
         if (!g_gpio_events())
         {
