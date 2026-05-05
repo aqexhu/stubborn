@@ -1,36 +1,6 @@
 # Product Wiki
 
-Welcome to the Stubborn UPS HAT knowledge base. This wiki contains detailed information, tutorials, and troubleshooting guides.
-
-## Getting Started
-
-- [Quick Start Guide](./quick-start.md)
-- [Hardware Installation](./hardware-installation.md)
-- [Software Setup](./software-setup.md)
-
-## Advanced Topics
-
-- [API Reference](./api-reference.md)
-- [Custom Configurations](./custom-configurations.md)
-- [Performance Tuning](./performance-tuning.md)
-
-## Troubleshooting
-
-- [Common Issues](./troubleshooting.md)
-- [LED Status Codes](./led-status-codes.md)
-- [Log Analysis](./log-analysis.md)
-
-## Development
-
-- [Contributing Code](./contributing.md)
-- [Building from Source](./building-from-source.md)
-- [Testing Procedures](./testing.md)
-
-## Community
-
-- [FAQ](./faq.md)
-- [User Projects](./user-projects.md)
-- [Support Resources](./support.md)
+Welcome to the Stubborn UPS HAT knowledge base. This wiki contains detailed information about each product model's features and performance characteristics.
 
 ## Model-Specific Information
 
@@ -45,6 +15,13 @@ Welcome to the Stubborn UPS HAT knowledge base. This wiki contains detailed info
 ### Stubborn Stamina (Multichem Battery)
 - [Stamina Specific Features](./stamina-features.md)
 - [Stamina Performance Data](./stamina-performance.md)
+
+## Additional Resources
+
+For additional support:
+- See the [User Manuals](../user-manual/) for installation and operation guides
+- Check the [Technical Datasheets](../technical-datasheet/) for detailed specifications
+- Refer to [Compliance Documents](../compliance/) for regulatory information
 
 ---
 

@@ -18,8 +18,8 @@ Welcome to the Stubborn UPS HAT user manual. This guide will help you install, c
 ### Stamina LF (LiFePO₄ Battery)
 
 - **Version**: Stamina LF v1.0
-- **English**: [Stubborn Stamina LF User Manual](./Stubborn-Stamina-LF_v1.0-UserManual_v1.0.pdf) (PDF)
-- **Hungarian**: [Stubborn Stamina LF Használati Útmutató](./Stubborn-Stamina-LF-v1.0-HasználatiÚtmutató_v1.0.pdf) (PDF)
+- **English**: [Stubborn Stamina LF User Manual](./Stubborn-Stamina-LF_v1.0-User_Manual_en_hu_v1.1.pdf) (PDF)
+- **Hungarian**: [Stubborn Stamina LF Használati Útmutató](./Stubborn-Stamina-LF_v1.0-User_Manual_en_hu_v1.1.pdf) (PDF)
 
 ### Stamina Max (Multichem Battery)
 
@@ -34,16 +34,13 @@ Welcome to the Stubborn UPS HAT user manual. This guide will help you install, c
 3. **Connect power source** (if using external battery)
 4. **Power on and configure** using the provided software
 
-## Software Setup
+## Support & Resources
 
-Choose your preferred programming language:
+For detailed information and troubleshooting:
 
-- [Python Setup](./python-setup.md)
-- [C Setup](./c-setup.md)
-
-## Troubleshooting
-
-Common issues and solutions can be found in the [product wiki](../wiki/troubleshooting.md).
+- **Product Wiki**: See the [wiki](../wiki/) for product-specific features and performance data
+- **Technical Datasheets**: Available in the [technical-datasheet](../technical-datasheet/) directory
+- **Compliance Documents**: See [compliance](../compliance/) for regulatory information
 
 ## Support
 
