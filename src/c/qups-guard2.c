@@ -310,7 +310,7 @@ int main(int argc, char **argv)
         lastval_lim = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.lim_n);
 
         // set initial state of output line to HIGH (shutdown active on Limit LOW)
-        if (gpiod_line_request_set_value(shd_request, DIP_sw.shd_n, 1) != 0)
+        if (gpiod_line_request_set_value(shd_request, DIP_sw.shd_n, gpiod_line_value.HIGH) != 0)
         {
             syslog(LOG_ERR, "Failed to set initial state of shutdown line");
             fprintf(stderr, "Failed to set initial state of shutdown line\n");
