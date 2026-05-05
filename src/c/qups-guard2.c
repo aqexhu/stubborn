@@ -213,11 +213,6 @@ int g_gpioinit()
     gpiod_line_config_free(linecfg_in);
     gpiod_request_config_free(reqcfg_in);
 
-    // Print initial status
-    printf("Initial power status: %s\n", gpiod_line_request_get_value(in_request, DIP_sw.pfo_n) ? "OK" : "NOK");
-    printf("Initial energy level: %s\n", gpiod_line_request_get_value(in_request, DIP_sw.lim_n) ? "HIGH" : "LOW");
-
-
     return 0;
 }
 
@@ -296,6 +291,12 @@ int main(int argc, char **argv)
     {
         syslog(LOG_INFO, "Used pins (BCM) - pfo: %d, lim: %d, shd: %d", DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
         printf("Used pins (BCM) - pfo: %d, lim: %d, shd: %d\n", DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
+        // Initial state read
+        lastval_pfo = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.pfo_n);
+        lastval_lim = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.lim_n);
+
+        syslog(LOG_INFO, "Initial state - Power %s, Limit %s", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
+        printf("Initial state - Power %s, Limit %s\n", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
     }
     else
     {
