@@ -52,7 +52,7 @@ The Stubborn family offers different energy storage solutions:
 
 ## Code Examples
 
-See the [`code/`](./code/) directory for C and Python drivers based on qups-guard from aqexhu/qups-guard:
+See the [`src/`](./src/) directory for C and Python drivers based on qups-guard from aqexhu/qups-guard:
 - C: qups-guard2 (event-driven GPIO monitoring)
 - Python: qups-guard.py (polling GPIO monitoring)
 
