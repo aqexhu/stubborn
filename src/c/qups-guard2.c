@@ -23,9 +23,21 @@ struct gpiod_edge_event_buffer *evbuf = NULL;
 
 #define CONSUMER "qUPS-guard"
 #define POLLINTERVAL 1000
+#define PFO_DEBOUNCE_INTERVAL 50000
 #define SHUTDOWN_DELAY 0
 uint8_t shutdown_delay = 0;
 static uint8_t shutdown_pulse = 0;
+static bool shutdown_enabled = true;
+
+/*
+ * LOW UPS message suppression
+ * 0 = logging enabled
+ * 1 = already logged during current outage
+ */
+static uint8_t low_ups_suppressed = 0;
+static struct timespec last_pfo_change;
+static bool pfo_change_initialized = false;
+
 
 struct DIPsw
 {
@@ -50,6 +62,7 @@ double diffcltime(struct timespec a, struct timespec b)
 
 void *g_shdcallback(void *args)
 {
+    (void)args;
     while (true)
     {
         if (shutdown_pulse)
@@ -64,10 +77,17 @@ void *g_shdcallback(void *args)
                 sleep(shutdown_delay);
                 syslog(LOG_INFO, "Shutdown with delay %d - expired, shutting down.", shutdown_delay);
 
-                if (system("sudo shutdown -h now") == 0)
-                {
-                    syslog(LOG_INFO, "Shutdown sequence succesfully initiated.");
-                }
+		if (shutdown_enabled)
+		{
+		    if (system("sudo shutdown -h now") == 0)
+		    {
+		        syslog(LOG_INFO, "Shutdown sequence succesfully initiated.");
+		    }
+		}
+		else
+		{
+		    syslog(LOG_INFO, "Shutdown sequence disabled by --noshutdown flag.");
+		}
             }
         }
         fflush(stdout);
@@ -77,6 +97,7 @@ void *g_shdcallback(void *args)
 
 void *g_callback(void *args)
 {
+    (void)args;
     /* Use libgpiod v2 line request / edge-event buffer API */
     const int buf_capacity = 64;
     evbuf = gpiod_edge_event_buffer_new(buf_capacity);
@@ -101,22 +122,46 @@ void *g_callback(void *args)
 
                 if (offset == DIP_sw.pfo_n)
                 {
+                    struct timespec now;
+                    clock_gettime(CLOCK_MONOTONIC, &now);
+                    double pfo_elapsed = pfo_change_initialized
+                                             ? diffcltime(last_pfo_change, now)
+                                             : PFO_DEBOUNCE_INTERVAL;
+
+                    if (pfo_elapsed < PFO_DEBOUNCE_INTERVAL)
+                        continue;
+
                     if (et == GPIOD_EDGE_EVENT_FALLING_EDGE)
                     {
                         // debounce last value check
                         if (lastval_pfo != gpiod_line_request_get_value(in_request, DIP_sw.pfo_n))
                         {
-                            syslog(LOG_INFO, "Power NOK");
-                            lastval_pfo = 0;
-                        }
+				syslog(LOG_INFO, "UPS line power NOK!");
+				printf("UPS line power NOK!\n");
+
+				lastval_pfo =
+				    (uint8_t)gpiod_line_request_get_value(in_request,
+                                          DIP_sw.pfo_n);
+                last_pfo_change = now;
+                pfo_change_initialized = true;
+			}
                     }
                     else if (et == GPIOD_EDGE_EVENT_RISING_EDGE)
                     {
                         // debounce last value check
                         if (lastval_pfo != gpiod_line_request_get_value(in_request, DIP_sw.pfo_n))
                         {
-                            syslog(LOG_INFO, "Power OK");
-                            lastval_pfo = 1;
+				syslog(LOG_INFO, "UPS line power OK.");
+				printf("UPS line power OK.\n");
+
+				/* Power restored, enable future LOW UPS messages */
+				low_ups_suppressed = 0;
+
+				lastval_pfo =
+				    (uint8_t)gpiod_line_request_get_value(in_request,
+                                          DIP_sw.pfo_n);
+                last_pfo_change = now;
+                pfo_change_initialized = true;
                         }
                     }
                 }
@@ -127,10 +172,33 @@ void *g_callback(void *args)
                         // debounce last value check
                         if (lastval_lim != gpiod_line_request_get_value(in_request, DIP_sw.lim_n))
                         {
-                            syslog(LOG_INFO, "Limit LOW");
-                            lastval_lim = 0;
-                            shutdown_pulse = 1;
-                            clock_gettime(CLOCK_MONOTONIC, &start_time);
+				shutdown_pulse = 1;
+				clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+				/*
+				 * Only print LOW UPS once while power is missing.
+				 * Suppression is cleared when external power returns.
+				 */
+				if (lastval_pfo == 0)
+				{
+				    if (low_ups_suppressed == 0)
+				    {
+				        printf("LOW UPS level detected!\n");
+
+				        syslog(LOG_INFO,
+				               "LOW UPS level detected! UPS energy level LOW.");
+
+				        low_ups_suppressed = 1;
+				    }
+				}
+				else
+				{
+				    syslog(LOG_INFO, "UPS energy level LOW.");
+				}
+
+				lastval_lim =
+				    (uint8_t)gpiod_line_request_get_value(in_request,
+		                                          DIP_sw.lim_n);
                         }
                     }
                     else if (et == GPIOD_EDGE_EVENT_RISING_EDGE)
@@ -138,9 +206,13 @@ void *g_callback(void *args)
                         // debounce last value check
                         if (lastval_lim != gpiod_line_request_get_value(in_request, DIP_sw.lim_n))
                         {
-                            syslog(LOG_INFO, "Limit HIGH");
-                            lastval_lim = 1;
-                            shutdown_pulse = 0;
+				syslog(LOG_INFO, "UPS energy level HIGH.");
+
+				shutdown_pulse = 0;
+
+				lastval_lim =
+				    (uint8_t)gpiod_line_request_get_value(in_request,
+                                          DIP_sw.lim_n);
                         }
                     }
                 }
@@ -191,6 +263,7 @@ int g_gpioinit()
     gpiod_request_config_set_consumer(reqcfg_out, CONSUMER);
     struct gpiod_line_settings *settings_out = gpiod_line_settings_new();
     gpiod_line_settings_set_direction(settings_out, GPIOD_LINE_DIRECTION_OUTPUT);
+    gpiod_line_settings_set_output_value(settings_out, GPIOD_LINE_VALUE_ACTIVE);
     struct gpiod_line_config *linecfg_out = gpiod_line_config_new();
     gpiod_line_config_add_line_settings(linecfg_out, &DIP_sw.shd_n, 1, settings_out);
     shd_request = gpiod_chip_request_lines(chip, reqcfg_out, linecfg_out);
@@ -212,6 +285,9 @@ int g_gpioinit()
     gpiod_line_settings_free(settings_in);
     gpiod_line_config_free(linecfg_in);
     gpiod_request_config_free(reqcfg_in);
+
+    ts.tv_sec = 10;
+    ts.tv_nsec = 0;
 
     return 0;
 }
@@ -253,6 +329,10 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Error: --shutdown-delay requires an argument - using default %d.\n", SHUTDOWN_DELAY);
                 shutdown_delay = SHUTDOWN_DELAY;
             }
+        }
+        else if (strcmp(argv[i], "--noshutdown") == 0)
+        {
+            shutdown_enabled = false;
         }
         else if (strcmp(argv[i], "--dip") == 0)
         {
@@ -306,31 +386,42 @@ int main(int argc, char **argv)
         syslog(LOG_INFO, "Used pins (BCM) - pfo: %d, lim: %d, shd: %d", DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
         printf("Used pins (BCM) - pfo: %d, lim: %d, shd: %d\n", DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
         // Initial state read
-        lastval_pfo = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.pfo_n);
-        lastval_lim = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.lim_n);
+	lastval_pfo =
+	    (uint8_t)gpiod_line_request_get_value(in_request,
+                                          DIP_sw.pfo_n);
 
-        // set initial state of output line to HIGH (shutdown active on Limit LOW)
-        if (gpiod_line_request_set_value(shd_request, DIP_sw.shd_n, GPIOD_LINE_VALUE_ACTIVE) != 0)
-        {
-            syslog(LOG_ERR, "Failed to set initial state of shutdown line");
-            fprintf(stderr, "Failed to set initial state of shutdown line\n");
-            exit(EXIT_FAILURE);
-        }
+	if (lastval_pfo == 0)
+	    syslog(LOG_INFO, "UPS line power NOK!");
+	else
+	    syslog(LOG_INFO, "UPS line power OK!");
 
-        syslog(LOG_INFO, "Initial state - Power %s, Limit %s - shutdown active.", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
-        printf("Initial state - Power %s, Limit %s - shutdown active.\n", lastval_pfo ? "OK" : "NOK", lastval_lim ? "HIGH" : "LOW");
+	lastval_lim =
+	    (uint8_t)gpiod_line_request_get_value(in_request,
+                                          DIP_sw.lim_n);
 
-        if (!shutdown_delay_set)
-        {
-            shutdown_delay = SHUTDOWN_DELAY;
-        }
-        syslog(LOG_INFO, "Shutdown delay %d", shutdown_delay);
+	if (lastval_lim == 0)
+	    syslog(LOG_INFO, "UPS energy level LOW.");
+	else
+	    syslog(LOG_INFO, "UPS energy level HIGH.");
 
-        if (!g_gpio_events())
-        {
-            pthread_join(g_thread, NULL);
-            g_gpiorelease();
-        }
+    if (lastval_pfo == 0 && lastval_lim == 0)
+    {
+        printf("LOW UPS level detected!\n");
+        syslog(LOG_INFO, "LOW UPS level detected! UPS energy level LOW.");
+        low_ups_suppressed = 1;
+    }
+
+    if (!shutdown_delay_set)
+    {
+        shutdown_delay = SHUTDOWN_DELAY;
+    }
+    syslog(LOG_INFO, "Shutdown delay %d", shutdown_delay);
+
+    if (!g_gpio_events())
+    {
+        pthread_join(g_thread, NULL);
+        g_gpiorelease();
+    }
     }
     else
     {
