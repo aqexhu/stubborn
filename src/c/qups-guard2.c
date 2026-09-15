@@ -91,7 +91,7 @@ void *g_shdcallback(void *args)
             }
         }
         fflush(stdout);
-        usleep(POLLINTERVAL);
+        //usleep(POLLINTERVAL);
     }
 }
 
@@ -142,8 +142,8 @@ void *g_callback(void *args)
 				lastval_pfo =
 				    (uint8_t)gpiod_line_request_get_value(in_request,
                                           DIP_sw.pfo_n);
-                last_pfo_change = now;
-                pfo_change_initialized = true;
+		                last_pfo_change = now;
+                		pfo_change_initialized = true;
 			}
                     }
                     else if (et == GPIOD_EDGE_EVENT_RISING_EDGE)
@@ -160,8 +160,8 @@ void *g_callback(void *args)
 				lastval_pfo =
 				    (uint8_t)gpiod_line_request_get_value(in_request,
                                           DIP_sw.pfo_n);
-                last_pfo_change = now;
-                pfo_change_initialized = true;
+		                last_pfo_change = now;
+		                pfo_change_initialized = true;
                         }
                     }
                 }
@@ -219,7 +219,7 @@ void *g_callback(void *args)
             }
         }
         fflush(stdout);
-        usleep(POLLINTERVAL);
+        //usleep(POLLINTERVAL);
     }
 }
 

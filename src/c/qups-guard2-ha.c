@@ -16,7 +16,7 @@
 
 #define CONSUMER "qUPS-guard"
 #define POLLINTERVAL 1000
-#define PFO_DEBOUNCE_INTERVAL 50000
+#define INPUT_DEBOUNCE_INTERVAL 500000
 #define SHUTDOWN_DELAY 0
 
 pthread_t g_thread, g_shdthread;
@@ -35,6 +35,8 @@ static uint8_t shutdown_pulse = 0;
 static uint8_t low_ups_suppressed = 0;
 static struct timespec last_pfo_change;
 static bool pfo_change_initialized = false;
+static struct timespec last_lim_change;
+static bool lim_change_initialized = false;
 
 static char chip_path[64] = "/dev/gpiochip0";
 static struct mosquitto *g_mosq = NULL;
@@ -322,7 +324,7 @@ void *g_shdcallback(void *args)
             }
         }
         fflush(stdout);
-        usleep(POLLINTERVAL);
+        //usleep(POLLINTERVAL);
     }
 }
 
@@ -353,8 +355,8 @@ void *g_callback(void *args)
             {
                 struct gpiod_edge_event *event =
                     gpiod_edge_event_buffer_get_event(evbuf, i);
-                enum gpiod_edge_event_type event_type =
-                    gpiod_edge_event_get_event_type(event);
+//                enum gpiod_edge_event_type event_type =
+//                    gpiod_edge_event_get_event_type(event);
                 unsigned int offset = gpiod_edge_event_get_line_offset(event);
 
                 if (offset == DIP_sw.pfo_n)
@@ -363,26 +365,26 @@ void *g_callback(void *args)
                     clock_gettime(CLOCK_MONOTONIC, &now);
                     double elapsed = pfo_change_initialized
                                          ? diffcltime(last_pfo_change, now)
-                                         : PFO_DEBOUNCE_INTERVAL;
-                    if (elapsed < PFO_DEBOUNCE_INTERVAL)
+                                         : INPUT_DEBOUNCE_INTERVAL;
+                    if (elapsed < INPUT_DEBOUNCE_INTERVAL)
                         continue;
 
                     uint8_t current = (uint8_t)gpiod_line_request_get_value(
                         in_request, DIP_sw.pfo_n);
                     if (lastval_pfo != current)
                     {
-                        if (event_type == GPIOD_EDGE_EVENT_FALLING_EDGE)
-                        {
-                            syslog(LOG_INFO, "UPS line power NOK!");
-                            publish_mqtt_state("OFF", lastval_lim == 0 ? "ON" : "OFF",
-                                               "On Backup");
-                        }
-                        else if (event_type == GPIOD_EDGE_EVENT_RISING_EDGE)
+                        if (current == 1)
                         {
                             low_ups_suppressed = 0;
                             syslog(LOG_INFO, "UPS line power OK.");
                             publish_mqtt_state("ON", lastval_lim == 0 ? "ON" : "OFF",
                                                "Online");
+                        }
+                        else
+                        {
+                            syslog(LOG_INFO, "UPS line power NOK!");
+                            publish_mqtt_state("OFF", lastval_lim == 0 ? "ON" : "OFF",
+                                               "On Backup");
                         }
                         lastval_pfo = current;
                         last_pfo_change = now;
@@ -391,32 +393,45 @@ void *g_callback(void *args)
                 }
                 else if (offset == DIP_sw.lim_n)
                 {
+                    struct timespec now;
+                    clock_gettime(CLOCK_MONOTONIC, &now);
+                    double elapsed = lim_change_initialized
+                                         ? diffcltime(last_lim_change, now)
+                                         : INPUT_DEBOUNCE_INTERVAL;
+                    if (elapsed < INPUT_DEBOUNCE_INTERVAL)
+                        continue;
+
                     uint8_t current = (uint8_t)gpiod_line_request_get_value(
                         in_request, DIP_sw.lim_n);
-                    if (event_type == GPIOD_EDGE_EVENT_FALLING_EDGE)
+                    if (lastval_lim != current)
                     {
-                        shutdown_pulse = 1;
-                        clock_gettime(CLOCK_MONOTONIC, &start_time);
-                        if (lastval_pfo == 0 && low_ups_suppressed == 0)
+                        if (current == 0)
                         {
-                            syslog(LOG_INFO, "UPS energy level LOW.");
-                            publish_mqtt_state("OFF", "ON", "Low Energy Warning");
-                            low_ups_suppressed = 1;
+                            shutdown_pulse = 1;
+                            clock_gettime(CLOCK_MONOTONIC, &start_time);
+                            if (lastval_pfo == 0 && low_ups_suppressed == 0)
+                            {
+                                syslog(LOG_INFO, "UPS energy level LOW.");
+                                publish_mqtt_state("OFF", "ON", "Low Energy Warning");
+                                low_ups_suppressed = 1;
+                            }
                         }
+                        else
+                        {
+                            syslog(LOG_INFO, "UPS energy level HIGH.");
+                            shutdown_pulse = 0;
+                            publish_mqtt_state(lastval_pfo == 1 ? "ON" : "OFF", "OFF",
+                                               lastval_pfo == 1 ? "Online" : "On Backup");
+                        }
+                        lastval_lim = current;
+                        last_lim_change = now;
+                        lim_change_initialized = true;
                     }
-                    else if (event_type == GPIOD_EDGE_EVENT_RISING_EDGE)
-                    {
-                        syslog(LOG_INFO, "UPS energy level HIGH.");
-                        shutdown_pulse = 0;
-                        publish_mqtt_state(lastval_pfo == 1 ? "ON" : "OFF", "OFF",
-                                           lastval_pfo == 1 ? "Online" : "On Backup");
-                    }
-                    lastval_lim = current;
                 }
             }
         }
         fflush(stdout);
-        usleep(POLLINTERVAL);
+        //usleep(POLLINTERVAL);
     }
 }
 
