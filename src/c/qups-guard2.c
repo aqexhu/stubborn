@@ -6,38 +6,30 @@
 #include <pthread.h>
 #include <string.h>
 #include <syslog.h>
-#include <errno.h>
 #include <time.h>
 #include <stdbool.h>
 
-pthread_t g_thread, g_shdthread;
-
-struct gpiod_chip *chip;
-uint8_t lastval_pfo = 255, lastval_lim = 255;
-struct gpiod_line *lineShd;
-struct timespec ts;
-struct timespec start_time, test_time;
-struct gpiod_line_request *in_request = NULL;
-struct gpiod_line_request *shd_request = NULL;
-struct gpiod_edge_event_buffer *evbuf = NULL;
-
 #define CONSUMER "qUPS-guard"
 #define POLLINTERVAL 1000
-#define PFO_DEBOUNCE_INTERVAL 50000
+#define INPUT_DEBOUNCE_INTERVAL 500000
 #define SHUTDOWN_DELAY 0
-uint8_t shutdown_delay = 0;
-static uint8_t shutdown_pulse = 0;
+
+static pthread_t g_thread, g_shdthread;
+static struct gpiod_chip *chip;
+static uint8_t lastval_pfo = 255, lastval_lim = 255;
+static struct timespec ts;
+static struct timespec start_time;
+static struct gpiod_line_request *in_request;
+static struct gpiod_line_request *shd_request;
+static struct gpiod_edge_event_buffer *evbuf;
+static uint8_t shutdown_delay = SHUTDOWN_DELAY;
+static uint8_t shutdown_pulse;
 static bool shutdown_enabled = true;
-
-/*
- * LOW UPS message suppression
- * 0 = logging enabled
- * 1 = already logged during current outage
- */
-static uint8_t low_ups_suppressed = 0;
+static uint8_t low_ups_suppressed;
 static struct timespec last_pfo_change;
-static bool pfo_change_initialized = false;
-
+static struct timespec last_lim_change;
+static bool pfo_change_initialized;
+static bool lim_change_initialized;
 
 struct DIPsw
 {
@@ -47,183 +39,153 @@ struct DIPsw
     unsigned int shd_n;
 } DIP_sw;
 
-char dip_sw[4];
+static struct DIPsw DIPswa[10] = {
+    {"10", 17, 27, 22}, {"01", 23, 24, 25}, {"11", 5, 6, 26},
+    {"111", 4, 24, 23}, {"011", 14, 18, 15}, {"101", 25, 7, 8},
+    {"001", 17, 22, 27}, {"110", 10, 11, 9}, {"010", 12, 20, 16},
+    {"100", 19, 21, 26}};
 
-struct DIPsw DIPswa[10] = {
-    {"10", 17, 27, 22}, {"01", 23, 24, 25}, {"11", 5, 6, 26}, {"111", 4, 24, 23}, {"011", 14, 18, 15}, {"101", 25, 7, 8}, {"001", 17, 22, 27}, {"110", 10, 11, 9}, {"010", 12, 20, 16}, {"100", 19, 21, 26}};
-
-double diffcltime(struct timespec a, struct timespec b)
+static double diffcltime(struct timespec a, struct timespec b)
 {
     long long elapsed_nanoseconds = (b.tv_sec - a.tv_sec) * 1000000000LL +
                                     (b.tv_nsec - a.tv_nsec);
-
     return (double)(elapsed_nanoseconds / 1000.0);
 }
 
-void *g_shdcallback(void *args)
+static bool set_dip_switch(const char *code)
+{
+    for (size_t i = 0; i < sizeof(DIPswa) / sizeof(DIPswa[0]); ++i)
+    {
+        if (strcmp(code, DIPswa[i].DIP) == 0)
+        {
+            DIP_sw = DIPswa[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+static void *g_shdcallback(void *args)
 {
     (void)args;
     while (true)
     {
         if (shutdown_pulse)
         {
-            clock_gettime(CLOCK_MONOTONIC, &test_time);
-            double dct;
-            dct = diffcltime(start_time, test_time);
-            if (dct > POLLINTERVAL)
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            if (diffcltime(start_time, now) > POLLINTERVAL)
             {
-                syslog(LOG_INFO, "Limit LOW since %.2f ms - initiating shutdown with delay %d.", dct / 1000, shutdown_delay);
-
+                syslog(LOG_INFO, "Limit LOW since %.2f ms - initiating shutdown with delay %d.",
+                       diffcltime(start_time, now) / 1000, shutdown_delay);
                 sleep(shutdown_delay);
-                syslog(LOG_INFO, "Shutdown with delay %d - expired, shutting down.", shutdown_delay);
-
-		if (shutdown_enabled)
-		{
-		    if (system("sudo shutdown -h now") == 0)
-		    {
-		        syslog(LOG_INFO, "Shutdown sequence succesfully initiated.");
-		    }
-		}
-		else
-		{
-		    syslog(LOG_INFO, "Shutdown sequence disabled by --noshutdown flag.");
-		}
+                if (shutdown_enabled)
+                {
+                    if (system("sudo shutdown -h now") == 0)
+                        syslog(LOG_INFO, "Shutdown sequence successfully initiated.");
+                }
+                else
+                {
+                    syslog(LOG_INFO, "Shutdown sequence disabled by --noshutdown flag.");
+                }
+                shutdown_pulse = 0;
             }
         }
-        fflush(stdout);
-        //usleep(POLLINTERVAL);
+        usleep(POLLINTERVAL);
     }
+    return NULL;
 }
 
-void *g_callback(void *args)
+static void *g_callback(void *args)
 {
     (void)args;
-    /* Use libgpiod v2 line request / edge-event buffer API */
-    const int buf_capacity = 64;
-    evbuf = gpiod_edge_event_buffer_new(buf_capacity);
+    evbuf = gpiod_edge_event_buffer_new(64);
+    if (!evbuf)
+        return NULL;
 
     int64_t timeout_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
-
     while (true)
     {
-        int ret = gpiod_line_request_wait_edge_events(in_request, timeout_ns);
-        if (ret == 1)
+        int result = gpiod_line_request_wait_edge_events(in_request, timeout_ns);
+        if (result != 1)
+            continue;
+
+        int events_read = gpiod_line_request_read_edge_events(in_request, evbuf, 64);
+        if (events_read <= 0)
+            continue;
+
+        size_t event_count = gpiod_edge_event_buffer_get_num_events(evbuf);
+        for (size_t i = 0; i < event_count; ++i)
         {
-            int nread = gpiod_line_request_read_edge_events(in_request, evbuf, buf_capacity);
-            if (nread <= 0)
-                continue;
+            struct gpiod_edge_event *event =
+                gpiod_edge_event_buffer_get_event(evbuf, i);
+            unsigned int offset = gpiod_edge_event_get_line_offset(event);
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
 
-            size_t nevents = gpiod_edge_event_buffer_get_num_events(evbuf);
-            for (size_t i = 0; i < nevents; ++i)
+            if (offset == DIP_sw.pfo_n)
             {
-                struct gpiod_edge_event *ev = gpiod_edge_event_buffer_get_event(evbuf, i);
-                enum gpiod_edge_event_type et = gpiod_edge_event_get_event_type(ev);
-                unsigned int offset = gpiod_edge_event_get_line_offset(ev);
+                double elapsed = pfo_change_initialized
+                                     ? diffcltime(last_pfo_change, now)
+                                     : INPUT_DEBOUNCE_INTERVAL;
+                if (elapsed < INPUT_DEBOUNCE_INTERVAL)
+                    continue;
 
-                if (offset == DIP_sw.pfo_n)
+                uint8_t current = (uint8_t)gpiod_line_request_get_value(
+                    in_request, DIP_sw.pfo_n);
+                if (lastval_pfo == current)
+                    continue;
+
+                lastval_pfo = current;
+                last_pfo_change = now;
+                pfo_change_initialized = true;
+                if (current == 0)
+                    syslog(LOG_INFO, "UPS line power NOK!");
+                else
                 {
-                    struct timespec now;
-                    clock_gettime(CLOCK_MONOTONIC, &now);
-                    double pfo_elapsed = pfo_change_initialized
-                                             ? diffcltime(last_pfo_change, now)
-                                             : PFO_DEBOUNCE_INTERVAL;
-
-                    if (pfo_elapsed < PFO_DEBOUNCE_INTERVAL)
-                        continue;
-
-                    if (et == GPIOD_EDGE_EVENT_FALLING_EDGE)
-                    {
-                        // debounce last value check
-                        if (lastval_pfo != gpiod_line_request_get_value(in_request, DIP_sw.pfo_n))
-                        {
-				syslog(LOG_INFO, "UPS line power NOK!");
-				printf("UPS line power NOK!\n");
-
-				lastval_pfo =
-				    (uint8_t)gpiod_line_request_get_value(in_request,
-                                          DIP_sw.pfo_n);
-		                last_pfo_change = now;
-                		pfo_change_initialized = true;
-			}
-                    }
-                    else if (et == GPIOD_EDGE_EVENT_RISING_EDGE)
-                    {
-                        // debounce last value check
-                        if (lastval_pfo != gpiod_line_request_get_value(in_request, DIP_sw.pfo_n))
-                        {
-				syslog(LOG_INFO, "UPS line power OK.");
-				printf("UPS line power OK.\n");
-
-				/* Power restored, enable future LOW UPS messages */
-				low_ups_suppressed = 0;
-
-				lastval_pfo =
-				    (uint8_t)gpiod_line_request_get_value(in_request,
-                                          DIP_sw.pfo_n);
-		                last_pfo_change = now;
-		                pfo_change_initialized = true;
-                        }
-                    }
+                    syslog(LOG_INFO, "UPS line power OK.");
+                    low_ups_suppressed = 0;
                 }
-                else if (offset == DIP_sw.lim_n)
+            }
+            else if (offset == DIP_sw.lim_n)
+            {
+                double elapsed = lim_change_initialized
+                                     ? diffcltime(last_lim_change, now)
+                                     : INPUT_DEBOUNCE_INTERVAL;
+                if (elapsed < INPUT_DEBOUNCE_INTERVAL)
+                    continue;
+
+                uint8_t current = (uint8_t)gpiod_line_request_get_value(
+                    in_request, DIP_sw.lim_n);
+                if (lastval_lim == current)
+                    continue;
+
+                lastval_lim = current;
+                last_lim_change = now;
+                lim_change_initialized = true;
+                if (current == 0)
                 {
-                    if (et == GPIOD_EDGE_EVENT_FALLING_EDGE)
+                    shutdown_pulse = 1;
+                    clock_gettime(CLOCK_MONOTONIC, &start_time);
+                    if (lastval_pfo == 0 && low_ups_suppressed == 0)
                     {
-                        // debounce last value check
-                        if (lastval_lim != gpiod_line_request_get_value(in_request, DIP_sw.lim_n))
-                        {
-				shutdown_pulse = 1;
-				clock_gettime(CLOCK_MONOTONIC, &start_time);
-
-				/*
-				 * Only print LOW UPS once while power is missing.
-				 * Suppression is cleared when external power returns.
-				 */
-				if (lastval_pfo == 0)
-				{
-				    if (low_ups_suppressed == 0)
-				    {
-				        printf("LOW UPS level detected!\n");
-
-				        syslog(LOG_INFO,
-				               "LOW UPS level detected! UPS energy level LOW.");
-
-				        low_ups_suppressed = 1;
-				    }
-				}
-				else
-				{
-				    syslog(LOG_INFO, "UPS energy level LOW.");
-				}
-
-				lastval_lim =
-				    (uint8_t)gpiod_line_request_get_value(in_request,
-		                                          DIP_sw.lim_n);
-                        }
+                        syslog(LOG_INFO, "LOW UPS level detected! UPS energy level LOW.");
+                        low_ups_suppressed = 1;
                     }
-                    else if (et == GPIOD_EDGE_EVENT_RISING_EDGE)
-                    {
-                        // debounce last value check
-                        if (lastval_lim != gpiod_line_request_get_value(in_request, DIP_sw.lim_n))
-                        {
-				syslog(LOG_INFO, "UPS energy level HIGH.");
-
-				shutdown_pulse = 0;
-
-				lastval_lim =
-				    (uint8_t)gpiod_line_request_get_value(in_request,
-                                          DIP_sw.lim_n);
-                        }
-                    }
+                    else
+                        syslog(LOG_INFO, "UPS energy level LOW.");
+                }
+                else
+                {
+                    syslog(LOG_INFO, "UPS energy level HIGH.");
+                    shutdown_pulse = 0;
                 }
             }
         }
-        fflush(stdout);
-        //usleep(POLLINTERVAL);
     }
 }
 
-int g_gpiorelease()
+static void g_gpiorelease(void)
 {
     if (in_request)
         gpiod_line_request_release(in_request);
@@ -231,209 +193,116 @@ int g_gpiorelease()
         gpiod_line_request_release(shd_request);
     if (evbuf)
         gpiod_edge_event_buffer_free(evbuf);
-    gpiod_chip_close(chip);
-    return 0;
+    if (chip)
+        gpiod_chip_close(chip);
 }
 
-int g_gpioinit()
+static int g_gpioinit(void)
 {
-    const char *chippath = "/dev/gpiochip0";
-    chip = gpiod_chip_open(chippath);
+    chip = gpiod_chip_open("/dev/gpiochip0");
+    if (!chip)
+        chip = gpiod_chip_open("/dev/gpiochip4");
     if (!chip)
     {
-        chippath = "/dev/gpiochip4";
-        chip = gpiod_chip_open(chippath);
-        if (!chip)
-        {
-            syslog(LOG_ERR, "Open chip failed\n");
-            exit(0);
-        }
+        syslog(LOG_ERR, "Open chip failed");
+        return -1;
     }
 
-    struct gpiod_chip_info *info = gpiod_chip_get_info(chip);
-    if (info)
-    {
-        syslog(LOG_INFO, "Chip name: %s - label: %s - %ld lines",
-               gpiod_chip_info_get_name(info), gpiod_chip_info_get_label(info), gpiod_chip_info_get_num_lines(info));
-        gpiod_chip_info_free(info);
-    }
+    struct gpiod_request_config *output_request = gpiod_request_config_new();
+    struct gpiod_line_settings *output_settings = gpiod_line_settings_new();
+    struct gpiod_line_config *output_config = gpiod_line_config_new();
+    struct gpiod_request_config *input_request = gpiod_request_config_new();
+    struct gpiod_line_settings *input_settings = gpiod_line_settings_new();
+    struct gpiod_line_config *input_config = gpiod_line_config_new();
+    if (!output_request || !output_settings || !output_config ||
+        !input_request || !input_settings || !input_config)
+        return -1;
 
-    /* Prepare request for output line (shd) */
-    struct gpiod_request_config *reqcfg_out = gpiod_request_config_new();
-    gpiod_request_config_set_consumer(reqcfg_out, CONSUMER);
-    struct gpiod_line_settings *settings_out = gpiod_line_settings_new();
-    gpiod_line_settings_set_direction(settings_out, GPIOD_LINE_DIRECTION_OUTPUT);
-    gpiod_line_settings_set_output_value(settings_out, GPIOD_LINE_VALUE_ACTIVE);
-    struct gpiod_line_config *linecfg_out = gpiod_line_config_new();
-    gpiod_line_config_add_line_settings(linecfg_out, &DIP_sw.shd_n, 1, settings_out);
-    shd_request = gpiod_chip_request_lines(chip, reqcfg_out, linecfg_out);
-    gpiod_line_settings_free(settings_out);
-    gpiod_line_config_free(linecfg_out);
-    gpiod_request_config_free(reqcfg_out);
+    gpiod_request_config_set_consumer(output_request, CONSUMER);
+    gpiod_line_settings_set_direction(output_settings, GPIOD_LINE_DIRECTION_OUTPUT);
+    gpiod_line_settings_set_output_value(output_settings, GPIOD_LINE_VALUE_ACTIVE);
+    gpiod_line_config_add_line_settings(output_config, &DIP_sw.shd_n, 1, output_settings);
+    shd_request = gpiod_chip_request_lines(chip, output_request, output_config);
+    gpiod_line_settings_free(output_settings);
+    gpiod_line_config_free(output_config);
+    gpiod_request_config_free(output_request);
+    if (!shd_request)
+        return -1;
 
-    /* Prepare request for input lines (pfo + lim) */
-    struct gpiod_request_config *reqcfg_in = gpiod_request_config_new();
-    gpiod_request_config_set_consumer(reqcfg_in, CONSUMER);
-    struct gpiod_line_settings *settings_in = gpiod_line_settings_new();
-    gpiod_line_settings_set_direction(settings_in, GPIOD_LINE_DIRECTION_INPUT);
-    gpiod_line_settings_set_edge_detection(settings_in, GPIOD_LINE_EDGE_BOTH);
-    gpiod_line_settings_set_bias(settings_in, GPIOD_LINE_BIAS_DISABLED);
-    struct gpiod_line_config *linecfg_in = gpiod_line_config_new();
-    unsigned int in_offsets[2] = {DIP_sw.pfo_n, DIP_sw.lim_n};
-    gpiod_line_config_add_line_settings(linecfg_in, in_offsets, 2, settings_in);
-    in_request = gpiod_chip_request_lines(chip, reqcfg_in, linecfg_in);
-    gpiod_line_settings_free(settings_in);
-    gpiod_line_config_free(linecfg_in);
-    gpiod_request_config_free(reqcfg_in);
+    gpiod_request_config_set_consumer(input_request, CONSUMER);
+    gpiod_line_settings_set_direction(input_settings, GPIOD_LINE_DIRECTION_INPUT);
+    gpiod_line_settings_set_edge_detection(input_settings, GPIOD_LINE_EDGE_BOTH);
+    gpiod_line_settings_set_bias(input_settings, GPIOD_LINE_BIAS_DISABLED);
+    unsigned int offsets[2] = {DIP_sw.pfo_n, DIP_sw.lim_n};
+    gpiod_line_config_add_line_settings(input_config, offsets, 2, input_settings);
+    in_request = gpiod_chip_request_lines(chip, input_request, input_config);
+    gpiod_line_settings_free(input_settings);
+    gpiod_line_config_free(input_config);
+    gpiod_request_config_free(input_request);
+    if (!in_request)
+        return -1;
 
     ts.tv_sec = 10;
     ts.tv_nsec = 0;
-
-    return 0;
-}
-
-int g_gpio_events()
-{
-    if (pthread_create(&g_thread, NULL, &g_callback, NULL) != 0)
-    {
-        syslog(LOG_ERR, "Thread init failed.");
-        return -1;
-    }
-
-    if (pthread_create(&g_shdthread, NULL, &g_shdcallback, NULL))
-    {
-        syslog(LOG_ERR, "Thread init failed.");
-        return -1;
-    }
-
+    lastval_pfo = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.pfo_n);
+    lastval_lim = (uint8_t)gpiod_line_request_get_value(in_request, DIP_sw.lim_n);
+    if (lastval_pfo == 0 && lastval_lim == 0)
+        low_ups_suppressed = 1;
     return 0;
 }
 
 int main(int argc, char **argv)
 {
-    bool dip_matched = false, shutdown_delay_set = false;
     openlog(CONSUMER, LOG_PID | LOG_NDELAY, LOG_USER);
+    bool dip_matched = false;
 
-    for (unsigned int i = 1; i < (unsigned int)argc; i++)
+    for (int i = 1; i < argc; ++i)
     {
-        if (strcmp(argv[i], "--shutdown-delay") == 0)
-        {
-            shutdown_delay_set = true;
-            if (i + 1 < (unsigned int)argc)
-            {
-                shutdown_delay = atoi(argv[i + 1]);
-                i++;
-            }
-            else
-            {
-                fprintf(stderr, "Error: --shutdown-delay requires an argument - using default %d.\n", SHUTDOWN_DELAY);
-                shutdown_delay = SHUTDOWN_DELAY;
-            }
-        }
+        if (strcmp(argv[i], "--shutdown-delay") == 0 && i + 1 < argc)
+            shutdown_delay = (uint8_t)atoi(argv[++i]);
         else if (strcmp(argv[i], "--noshutdown") == 0)
-        {
             shutdown_enabled = false;
-        }
-        else if (strcmp(argv[i], "--dip") == 0)
+        else if (strcmp(argv[i], "--dip") == 0 && i + 1 < argc)
         {
-            if (i + 1 < (unsigned int)argc)
+            dip_matched = set_dip_switch(argv[++i]);
+            if (!dip_matched)
             {
-                unsigned int dip_len = strlen(argv[i + 1]);
-                if (dip_len == 3 || dip_len == 2)
-                {
-                    strncpy(dip_sw, argv[i + 1], dip_len);
-                    dip_sw[dip_len] = '\0';
-                    for (unsigned int j = 0; j < 10; j++)
-                    {
-                        if (!strcmp(dip_sw, DIPswa[j].DIP))
-                        {
-                            DIP_sw = DIPswa[j];
-                            dip_matched = true;
-                        }
-                    }
-                }
-                i++;
-            }
-            else
-            {
-                fprintf(stderr, "Error: --dip requires an argument\n");
-                exit(EXIT_FAILURE);
+                fprintf(stderr, "Invalid DIP setting provided.\n");
+                return EXIT_FAILURE;
             }
         }
         else
         {
             fprintf(stderr, "Unknown argument: %s\n", argv[i]);
-            exit(EXIT_FAILURE);
+            return EXIT_FAILURE;
         }
     }
 
-    if (dip_matched)
+    if (!dip_matched)
     {
-        if (g_gpioinit() != 0)
-        {
-            syslog(LOG_ERR, "GPIO initialization failed");
-            fprintf(stderr, "GPIO initialization failed\n");
-            exit(EXIT_FAILURE);
-        }
-
-        if (!in_request)
-        {
-            syslog(LOG_ERR, "GPIO input request not available");
-            fprintf(stderr, "GPIO input request not available\n");
-            exit(EXIT_FAILURE);
-        }
-
-        syslog(LOG_INFO, "Used pins (BCM) - pfo: %d, lim: %d, shd: %d", DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
-        printf("Used pins (BCM) - pfo: %d, lim: %d, shd: %d\n", DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
-        // Initial state read
-	lastval_pfo =
-	    (uint8_t)gpiod_line_request_get_value(in_request,
-                                          DIP_sw.pfo_n);
-
-	if (lastval_pfo == 0)
-	    syslog(LOG_INFO, "UPS line power NOK!");
-	else
-	    syslog(LOG_INFO, "UPS line power OK!");
-
-	lastval_lim =
-	    (uint8_t)gpiod_line_request_get_value(in_request,
-                                          DIP_sw.lim_n);
-
-	if (lastval_lim == 0)
-	    syslog(LOG_INFO, "UPS energy level LOW.");
-	else
-	    syslog(LOG_INFO, "UPS energy level HIGH.");
-
-    if (lastval_pfo == 0 && lastval_lim == 0)
-    {
-        printf("LOW UPS level detected!\n");
-        syslog(LOG_INFO, "LOW UPS level detected! UPS energy level LOW.");
-        low_ups_suppressed = 1;
+        fprintf(stderr, "Used pins not specified - usage: --dip <DIP switch>\n");
+        return EXIT_FAILURE;
     }
-
-    if (!shutdown_delay_set)
+    if (g_gpioinit() != 0)
     {
-        shutdown_delay = SHUTDOWN_DELAY;
-    }
-    syslog(LOG_INFO, "Shutdown delay %d", shutdown_delay);
-
-    if (!g_gpio_events())
-    {
-        pthread_join(g_thread, NULL);
         g_gpiorelease();
-    }
-    }
-    else
-    {
-        syslog(LOG_ERR, "Used pins not specified - usage: --dip <DIP switch GT1-2 or DIP 1-2-3>");
-        syslog(LOG_ERR, "Example: --dip 10  means DIP switch GT1=ON GT2=OFF");
-        syslog(LOG_ERR, "         --dip 100 means DIP 1=ON 2=OFF 3=OFF");
-        printf("Used pins not specified - usage: --dip <DIP switch GT1-2 or DIP 1-2-3>\n");
-        printf("Example: --dip 10  means DIP switch GT1=ON GT2=OFF\n");
-        printf("         --dip 100 means DIP 1=ON 2=OFF 3=OFF\n");
-        printf("Shutdown delay can be set with --shutdown-delay <seconds> (default %d)\n", SHUTDOWN_DELAY);
+        return EXIT_FAILURE;
     }
 
+    syslog(LOG_INFO, "Used pins (BCM) - pfo: %d, lim: %d, shd: %d",
+           DIP_sw.pfo_n, DIP_sw.lim_n, DIP_sw.shd_n);
+    syslog(LOG_INFO, "Shutdown delay %d seconds", shutdown_delay);
+    if (pthread_create(&g_thread, NULL, g_callback, NULL) != 0 ||
+        pthread_create(&g_shdthread, NULL, g_shdcallback, NULL) != 0)
+    {
+        syslog(LOG_ERR, "Thread init failed.");
+        g_gpiorelease();
+        return EXIT_FAILURE;
+    }
+
+    pthread_join(g_thread, NULL);
+    pthread_join(g_shdthread, NULL);
+    g_gpiorelease();
     closelog();
     return 0;
 }

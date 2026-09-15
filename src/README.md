@@ -40,6 +40,9 @@ python qups-guard.py 11  # For Balance model with DIP switches 1 and 2 ON
 ```bash
 # Run with DIP switch pattern
 ./qups-guard2 --dip 11 --shutdown-delay 10
+
+# Disable the shutdown command while testing
+./qups-guard2 --dip 11 --noshutdown
 ```
 
 ## DIP Switch Configuration
